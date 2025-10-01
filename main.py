@@ -1,62 +1,33 @@
-from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
-from typing import List, Annotated
-import models
-from database import SessionLocal, engine
-from sqlalchemy.orm import Session
-from starlette.responses import JSONResponse
+from typing import Annotated
+from fastapi import FastAPI, Depends
 
 app = FastAPI()
-models.Base.metadata.create_all(bind=engine)
 
-class ChoiceBase(BaseModel):
-    choice_text: str
-    is_correct: bool
+class Logger:
+    def log(self, message: str):
+        print(f"Log entry: {message}")
 
-class QuestionBase(BaseModel):
-    question_text: str
-    choices: List[ChoiceBase]
+class EmailService:
+    def send_email(self, recipient: str, message: str):
+        print(f"Sending email to {recipient}: {message}")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+def get_logger():
+    return Logger()
 
-db_dependency = Annotated[Session, Depends(get_db)]
+def get_email_service():
+    return EmailService()
 
-@app.get('/questions/{question_id}')
-async def read_question(question_id: int, db: db_dependency):
-    result = db.query(models.Questions).filter(models.Questions.id == question_id).first()
-    if not result:
-        raise HTTPException(status_code=404, detail='Question not found')
+logger_dependency = Annotated[Logger, Depends(get_logger)]
+email_service_dependency = Annotated[EmailService, Depends(get_email_service)]
+
+@app.get('/log/{message}')
+def log_message(message: str, logger: logger_dependency):
+    logger.log(message)
     
-    return result
+    return message
 
-@app.get("/choices/{question_id}")
-async def read_choices(question_id: int, db: db_dependency):
-    choices = db.query(models.Choices).filter(models.Choices.question_id == question_id).all()
-    if not choices:
-        raise HTTPException(status_code=404, detail='Choices not found for the given question ID')
+@app.get('/email/{recipient}/{message}')
+def send_email(recipient: str, message: str, email_service: email_service_dependency):
+    email_service.send_email(recipient, message)
     
-    return choices
-
-@app.post("/questions/")
-async def create_questions(question: QuestionBase, db: db_dependency):
-    db_question = models.Questions(question_text=question.question_text)
-    db.add(db_question)
-    db.commit()
-    db.refresh(db_question)
-    
-    for choice in question.choices:
-        db_choice = models.Choices(
-            choice_text=choice.choice_text,
-            is_correct=choice.is_correct,
-            question_id=db_question.id
-        )
-        db.add(db_choice)
-    
-    db.commit()
-    return JSONResponse(content={"message": "Question and choices created successfully", "question_id": db_question.id})
-
+    return {"recipient": recipient, "message": message}
