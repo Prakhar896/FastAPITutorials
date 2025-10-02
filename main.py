@@ -1,33 +1,16 @@
-from typing import Annotated
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Request
+import random, string
 
 app = FastAPI()
 
-class Logger:
-    def log(self, message: str):
-        print(f"Log entry: {message}")
+@app.middleware("http")
+async def request_id_logging(request: Request, call_next):
+    response = await call_next(request)
+    request_id = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    response.headers["X-Request-ID"] = request_id
+    print(f"Request ID: {request_id} - Path: {request.url.path}")
+    return response
 
-class EmailService:
-    def send_email(self, recipient: str, message: str):
-        print(f"Sending email to {recipient}: {message}")
-
-def get_logger():
-    return Logger()
-
-def get_email_service():
-    return EmailService()
-
-logger_dependency = Annotated[Logger, Depends(get_logger)]
-email_service_dependency = Annotated[EmailService, Depends(get_email_service)]
-
-@app.get('/log/{message}')
-def log_message(message: str, logger: logger_dependency):
-    logger.log(message)
-    
-    return message
-
-@app.get('/email/{recipient}/{message}')
-def send_email(recipient: str, message: str, email_service: email_service_dependency):
-    email_service.send_email(recipient, message)
-    
-    return {"recipient": recipient, "message": message}
+@app.get("/")
+async def say_hi():
+    return "Hello, World!"
